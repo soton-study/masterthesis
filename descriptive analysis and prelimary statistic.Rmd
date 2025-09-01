@@ -1,0 +1,159 @@
+```{r}
+# Check Summary statistics of VNI percentage log-returns
+# install.packages(c("moments","tseries","kableExtra"))
+# install.packages(c("moments","tseries","flextable","officer"))
+library(moments)
+library(tseries)
+library(flextable)
+library(officer)
+
+# --- 1) Compute stats from your series ---------------------------------------
+x <- as.numeric(vni$ret_ar1)
+jb <- jarque.bera.test(x)
+
+tab <- data.frame(
+  Min        = min(x, na.rm = TRUE),
+  Max        = max(x, na.rm = TRUE),
+  Mean       = mean(x, na.rm = TRUE),
+  Median     = median(x, na.rm = TRUE),
+  Std        = sd(x, na.rm = TRUE),
+  Skewness   = skewness(x, na.rm = TRUE),
+  Kurtosis   = kurtosis(x, na.rm = TRUE),
+  `Jb p-val` = jb$p.value
+)
+
+# round nicely; force very small p-values to show as 0.0000 instead of scientific
+fmt4 <- function(z) format(round(z, 4), nsmall = 4, scientific = FALSE, trim = TRUE)
+tab[] <- lapply(tab, fmt4)
+
+# --- 2) Build a Word table ----------------------------------------------------
+ft <- flextable(tab)
+ft <- theme_booktabs(ft)
+ft <- autofit(ft)
+ft <- bold(ft, part = "header", bold = TRUE)
+ft <- align(ft, align = "center", part = "all")
+
+# optional note row
+note_txt <- "Notes: Returns are daily percentage log-returns. JB = Jarque–Bera normality test."
+ft <- add_footer_lines(ft, note_txt)
+ft <- fontsize(ft, part = "footer", size = 9)
+ft <- italic(ft, part = "footer")
+
+# --- 3) Write to .docx --------------------------------------------------------
+doc <- read_docx()
+doc <- body_add_par(doc, "Table 1: Summary statistics of VNI percentage log-returns",
+                    style = "heading 1")
+doc <- body_add_flextable(doc, ft)
+print(doc, target = "table_summary.docx")
+
+# -> File saved as: table_summary.docx
+```
+
+
+
+
+```{r}
+#Plot the %log return of VNI over 1/1/2017-31/12/2024
+# install.packages("ggplot2")  # if not installed
+library(ggplot2)
+
+ggplot(vni, aes(x = Date, y = ret_ar1)) +
+  geom_line(color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "VNI Log-Return (in %)",
+       x = "Date", y = "Log Return") +
+  theme_classic(base_size = 12)
+
+```
+```{r}
+# Histogram of daily log return 2017-2024
+library(ggplot2)
+
+ggplot(vni, aes(x = ret_ar1)) +
+  geom_histogram(bins = 60, fill = "blue", color = "black") +
+  labs(title = "Histogram of Daily Log Returns",
+       x = "Log Return (%)", y = "Frequency") +
+  theme_classic(base_size = 12)
+
+```
+```{r}
+#the autocorrelation function (ACF) plot of squared log-returns
+# Squared log-returns
+ret2 <- vni$ret_ar1^2
+
+# ACF up to 35 lags
+acf(ret2,
+    lag.max = 35,
+    main = "Autocorrelation of Squared Log Returns")
+
+
+```
+```{r}
+# install.packages(c("tseries","kableExtra","flextable","officer"))
+library(tseries)
+library(kableExtra)
+library(flextable)
+library(officer)
+
+# --- 2) Define lags to test
+lags <- c(1, 5, 10, 20, 30)
+
+# --- 3) Run Ljung-Box test for each lag
+results <- data.frame(
+  Lag = paste0("Q(", lags, ")"),
+  Qstat = sapply(lags, function(l) {
+    lb <- Box.test(ret2, lag = l, type = "Ljung-Box")
+    lb$statistic
+  }),
+  pval = sapply(lags, function(l) {
+    lb <- Box.test(ret2, lag = l, type = "Ljung-Box")
+    lb$p.value
+  })
+)
+
+# --- 4) Add significance stars
+stars <- function(p) {
+  if (p < 0.01) return("***")
+  else if (p < 0.05) return("**")
+  else if (p < 0.1) return("*")
+  else return("")
+}
+
+results$Qstat <- paste0(round(results$Qstat, 2), mapply(stars, results$pval))
+
+# --- 5) Format final table
+final_tab <- results[, c("Lag","Qstat")]
+colnames(final_tab) <- c("Number of Lags", "Ljung-Box Q-statistic")
+
+
+# --- 6B) Word table (if needed)
+ft <- flextable(final_tab)
+ft <- theme_booktabs(ft)
+ft <- autofit(ft)
+ft <- add_footer_lines(ft, "* , ** , and *** indicate significance at the 10%, 5% and 1% levels, respectively.")
+
+doc <- read_docx()
+doc <- body_add_par(doc, "Table: Results for Ljung-Box test for squared VNI log returns (%)",
+                    style = "heading 1")
+doc <- body_add_flextable(doc, ft)
+print(doc, target = "table_ljungbox.docx")
+
+```
+```{r}
+# install.packages("tseries")  # if needed
+library(tseries)
+
+
+#  Augmented Dickey-Fuller (null: unit root; alt: stationary)
+#    k is the number of lags in Δx (rule-of-thumb here Schwert 1989, Said & Dickey 1984); adjust if you like)
+k <- floor((length(x) - 1)^(1/3))
+adf_none  <- adf.test(x, alternative = "stationary", k = k)     # no drift/trend
+adf_drift <- adf.test(x - mean(x), alternative = "stationary", k = k)  # demeaned (rough drift case)
+
+# 3) KPSS (null: level/trend stationarity)
+kpss_level <- kpss.test(x, null = "Level")
+kpss_trend <- kpss.test(x, null = "Trend")
+
+adf_none; adf_drift; kpss_level; kpss_trend
+```
+
