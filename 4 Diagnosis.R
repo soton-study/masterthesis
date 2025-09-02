@@ -37,7 +37,7 @@ print(ann_unc_vol)
 #Ljung box test for ARCH effect of residuals
 library(MSGARCH)
 
-# 1) Get conditional volatility σ_t
+# 1) Get conditional volatility σ_t , Change "fit" into "fit2" to for MS-E-GARCH model
 sigma_t <- as.numeric(Volatility(fit))
 
 # 2) Standardized residuals
